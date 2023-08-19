@@ -383,12 +383,8 @@ export function expose(
   }
 }
 
-function isMessagePort(endpoint: Endpoint): endpoint is MessagePort {
-  return endpoint.constructor.name === "MessagePort";
-}
-
 function closeEndPoint(endpoint: Endpoint) {
-  if (isMessagePort(endpoint)) endpoint.close();
+  endpoint.constructor.name === "MessagePort" && endpoint.close();
 }
 
 export function wrap<T>(ep: Endpoint, target?: any): Remote<T> {
@@ -566,11 +562,7 @@ function toWireValue(value: any): [WireValue, Transferable[]] {
     if (handler.canHandle(value)) {
       const [serializedValue, transferables] = handler.serialize(value);
       return [
-        {
-          type: WireValueType.HANDLER,
-          name,
-          value: serializedValue,
-        },
+        { type: WireValueType.HANDLER, name, value: serializedValue },
         transferables,
       ];
     }
@@ -599,24 +591,19 @@ function requestResponseMessage(
   transfers?: Transferable[]
 ): Promise<WireValue> {
   return new Promise((resolve) => {
-    const id = generateUUID();
-    ep.addEventListener("message", function l(ev: MessageEvent) {
+    const id = globalThis.crypto.randomUUID();
+    ep.onmessage = function l(ev: MessageEvent) {
       if (!ev.data || !ev.data.id || ev.data.id !== id) {
         return;
       }
-      ep.removeEventListener("message", l as any);
+      ep.onmessage = () => { return false }
       resolve(ev.data);
     } as any);
+    
     if (ep.start) {
       ep.start();
     }
+    
     ep.postMessage({ id, ...msg }, transfers);
   });
-}
-
-function generateUUID(): string {
-  return new Array(4)
-    .fill(0)
-    .map(() => Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(16))
-    .join("-");
 }
